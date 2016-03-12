@@ -14,7 +14,47 @@ from flexget.utils.requests import TimedLimiter
 
 log = logging.getLogger('search_sceneaccess')
 
+SEARCH_METHODS = {
+    'Advanced': 1,
+    'Titles': 2,
+    'Description': 3,
+    }
+
 CATEGORIES = {
+    'all':
+        {
+            'Movies/DVD-R': 8,
+            'Movies/x264': 22,
+            'Movies/XviD': 7,
+            'Movies/Packs': 4, #new
+
+            'TV/HD-x264': 27,
+            'TV/SD-x264': 17,
+            'TV/XviD': 11,
+            'TV/Packs': 26, #new
+
+            'Games/PC': 3,
+            'Games/PS3': 5,
+            'Games/PSP': 20,
+            'Games/WII': 28,
+            'Games/XBOX360': 23,
+            'Games/Packs': 29, #new
+
+            'Music/FLAC': 40, #new
+            'Music/MP3': 13, #new
+            'Music/MVID': 15, #new
+
+            'APPS/ISO': 1,
+            'APPS/0DAY': 2, #new
+            'DOX': 14,
+            'MISC': 21,
+
+            'P2P/Movies/HD-x264': 41, #new
+            'P2P/Movies/SD-x264': 42, #new
+            'P2P/Movies/XviD': 43, #new
+            'P2P/TV/HD': 44, #new
+            'P2P/TV/SD': 45, #new
+        },
     'browse':
         {
             'Movies/DVD-R': 8,
@@ -87,26 +127,27 @@ class SceneAccessSearch(object):
         password: XXXX              (required)
         category: Movies/x264       (optional)
         gravity_multiplier: 200     (optional)
+        search_method: advanced/titles/description (default: titles)
 
     == Categories:
-    +---------------+----------------+-----------+--------------+--------------+----------+
-    |    browse     |    nonscene    | mp3/0day  |   archive    |   foreign    |   xxx    |
-    +---------------+----------------+-----------+--------------+--------------+----------+
-    | APPS/ISO      | Movies/HD-x264 | 0DAY/APPS | Games/Packs  | Movies/DVD-R | XXX/0DAY |
-    | DOX           | Movies/SD-x264 | FLAC      | Movies/Packs | Movies/x264  | XXX/x264 |
-    | Games/PC      | Movies/XviD    | MP3       | Music/Packs  | Movies/XviD  | XXX/XviD |
-    | Games/PS3     | TV/HD          | MVID      | TV/Packs     | TV/x264      |          |
-    | Games/PSP     | TV/SD          |           | XXX/Packs    | TV/XviD      |          |
-    | Games/WII     |                |           |              |              |          |
-    | Games/XBOX360 |                |           |              |              |          |
-    | MISC          |                |           |              |              |          |
-    | Movies/DVD-R  |                |           |              |              |          |
-    | Movies/x264   |                |           |              |              |          |
-    | Movies/XviD   |                |           |              |              |          |
-    | TV/HD-x264    |                |           |              |              |          |
-    | TV/SD-x264    |                |           |              |              |          |
-    | TV/XviD       |                |           |              |              |          |
-    +---------------+----------------+-----------+--------------+--------------+----------+
+    +---------------+---------------+----------------+-----------+--------------+--------------+----------+
+    |      all      |    browse     |    nonscene    | mp3/0day  |   archive    |   foreign    |   xxx    |
+    +---------------+---------------+----------------+-----------+--------------+--------------+----------+
+    |      -->      | APPS/ISO      | Movies/HD-x264 | 0DAY/APPS | Games/Packs  | Movies/DVD-R | XXX/0DAY |
+    +---------------| DOX           | Movies/SD-x264 | FLAC      | Movies/Packs | Movies/x264  | XXX/x264 |
+                    | Games/PC      | Movies/XviD    | MP3       | Music/Packs  | Movies/XviD  | XXX/XviD |
+                    | Games/PS3     | TV/HD          | MVID      | TV/Packs     | TV/x264      |          |
+                    | Games/PSP     | TV/SD          |           | XXX/Packs    | TV/XviD      |          |
+                    | Games/WII     |                |           |              |              |          |
+                    | Games/XBOX360 |                |           |              |              |          |
+                    | MISC          |                |           |              |              |          |
+                    | Movies/DVD-R  |                |           |              |              |          |
+                    | Movies/x264   |                |           |              |              |          |
+                    | Movies/XviD   |                |           |              |              |          |
+                    | TV/HD-x264    |                |           |              |              |          |
+                    | TV/SD-x264    |                |           |              |              |          |
+                    | TV/XviD       |                |           |              |              |          |
+                    +---------------+----------------+-----------+--------------+--------------+----------+
 
     You can combine the categories almost any way you want, here are some examples:
 
@@ -141,6 +182,19 @@ class SceneAccessSearch(object):
 
     gravity_multiplier will multiply the above number by specified amount.
     If you use public trackers for searches, you may want to use this feature.
+
+    == Search Method
+    sceneaccess has 3 search methods.
+
+    * advanced
+        torrentname and description included in search. Also allows wildcard searches using * (asterisk).
+        A good example of asterisk usage, if you want to find all TheShow releases by group THEGROUP, you then search for TheShow*THEGROUP
+    * titles
+        search based on torrent titles (default)
+    * description
+        search based on torrent descriptions
+       
+
     """
 
     def validator(self):
@@ -151,9 +205,11 @@ class SceneAccessSearch(object):
         root.accept('number', key='gravity_multiplier')
 
         # Scope as in pages like `browse`, `mp3/0day`, `foreign`, etc.
-        # Will only accept categories from `browse` which will it default to, unless user specifies other scopes
+        # Will only accept categories from `browse` which will it default to,
+        # unless user specifies other scopes
         # via dict
         root.accept('choice', key='category').accept_choices(CATEGORIES['browse'])
+        root.accept('choice', key='search_method').accept_choices(SEARCH_METHODS)
         root.accept('number', key='category')
         categories = root.accept('dict', key='category')
 
@@ -196,10 +252,12 @@ class SceneAccessSearch(object):
                     elif not isinstance(category[scope], list):     # or convert single category into list
                         category[scope] = [category[scope]]
                     toProcess[scope] = category[scope]
-            else:                       # Will default to `browse` scope, because no scope was specified (only category)
+            else:                       # Will default to `browse` scope, because no scope was
+                                        # specified (only category)
                 category = [category]
                 toProcess[scope] = category
-        except KeyError:    # Category was not set, will default to all categories within `browse` scope.
+        except KeyError:    # Category was not set, will default to all categories within `browse`
+                            # scope.
             toProcess[scope] = []
 
         finally:    # Process the categories to use in search() method
@@ -253,7 +311,7 @@ class SceneAccessSearch(object):
         BASE_URLS = list()
         entries = set()
         for category in self.processCategories(config):
-            BASE_URLS.append(URL + '%(url_path)s?method=2%(category_url_string)s' % category)
+            BASE_URLS.append(URL + '%(url_path)s?method='+ config['search_method'] +'%(category_url_string)s' % category)
 
         # Search...
         for search_string in entry.get('search_strings', [entry['title']]):
