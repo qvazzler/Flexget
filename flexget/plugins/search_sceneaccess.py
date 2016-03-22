@@ -10,14 +10,14 @@ from flexget.entry import Entry
 from flexget.event import event
 from flexget.utils.soup import get_soup
 from flexget.utils.search import torrent_availability, normalize_unicode, clean_title
-from flexget.utils.requests import TimedLimiter
+from flexget.utils.requests import TimedLimiter, Session
 
 log = logging.getLogger('search_sceneaccess')
 
 SEARCH_METHODS = {
-    'Advanced': 1,
-    'Titles': 2,
-    'Description': 3,
+    'advanced': 1,
+    'titles': 2,
+    'description': 3,
     }
 
 CATEGORIES = {
@@ -209,6 +209,9 @@ class SceneAccessSearch(object):
         # unless user specifies other scopes
         # via dict
         root.accept('choice', key='category').accept_choices(CATEGORIES['browse'])
+        #root.accept('number', key='search_method').accept_choices(SEARCH_METHODS)
+        #root.accept('choice', key='search_method').accept_choices(['advanced', 'titles', 'description'])
+        #root.accept('choice', 'type').accept_choices(['p2p', 'scene'])
         root.accept('choice', key='search_method').accept_choices(SEARCH_METHODS)
         root.accept('number', key='category')
         categories = root.accept('dict', key='category')
@@ -290,7 +293,16 @@ class SceneAccessSearch(object):
             Search for entries on SceneAccess
         """
 
-        session = task.requests
+        try:
+            session = task.requests
+        except:
+            session = Session()
+
+        if 'search_method' in config:
+            search_method = SEARCH_METHODS[config['search_method']]
+            log.debug('Sceneaccess search method: %s' % search_method)
+        else:
+            search_method = SEARCH_METHODS["titles"]
 
         if 'sceneaccess.eu' not in session.domain_limiters:
             session.add_domain_limiter(TimedLimiter('sceneaccess.eu', '7 seconds'))
@@ -311,7 +323,7 @@ class SceneAccessSearch(object):
         BASE_URLS = list()
         entries = set()
         for category in self.processCategories(config):
-            BASE_URLS.append(URL + '%(url_path)s?method='+ config['search_method'] +'%(category_url_string)s' % category)
+            BASE_URLS.append(URL + '%(url_path)s?method='+ search_method +'%(category_url_string)s' % category)
 
         # Search...
         for search_string in entry.get('search_strings', [entry['title']]):
