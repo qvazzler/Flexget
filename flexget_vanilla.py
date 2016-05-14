@@ -1,6 +1,6 @@
 #!/usr/bin/env python 
 """
-    Run FlexGet without bootstrap and virtualenv.
+    Run FlexGet without bootstrap and virtualenv. Hi!
     
     You need to have all dependencies installed in site-packages when using this.
 """
